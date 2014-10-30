@@ -66,7 +66,7 @@ bool opencl_discover(opencl_handle* handle, cl_device_type type) {
 bool opencl_setup(opencl_handle* handle, bool separate_contexts) {
   if (separate_contexts) {
     handle->contexts = (cl_context*) malloc(handle->n_devices * sizeof(cl_context));
-    if (handle->contexts = NULL) {
+    if (handle->contexts == NULL) {
       printf("Out of memory!\n");
       return false;
     }
@@ -78,7 +78,7 @@ bool opencl_setup(opencl_handle* handle, bool separate_contexts) {
     }
   } else {
     handle->contexts = (cl_context*) malloc(sizeof(cl_context));
-    if (handle->contexts = NULL) {
+    if (handle->contexts == NULL) {
       printf("Out of memory!\n");
       return false;
     }
