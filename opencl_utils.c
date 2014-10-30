@@ -62,31 +62,22 @@ bool opencl_discover(opencl_handle* handle, cl_device_type type) {
 }
 
 
+bool opencl_setup(opencl_handle* handle, int n_devices) {
+  handle->context = clCreateContext(NULL, n_devices, handle->devices, NULL, NULL, &opencl_error);
+  OPENCL_CHECK(opencl_error);
+  handle->n_devices = n_devices;
 
-bool opencl_setup(opencl_handle* handle, bool separate_contexts) {
-  if (separate_contexts) {
-    handle->contexts = (cl_context*) malloc(handle->n_devices * sizeof(cl_context));
-    if (handle->contexts == NULL) {
-      printf("Out of memory!\n");
-      return false;
-    }
-    handle->n_contexts = handle->n_devices;
-    for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
-      handle->contexts[dev_loop] = clCreateContext(NULL, 1, &handle->devices[dev_loop],
-                                                   NULL, NULL, &opencl_error);
-      OPENCL_CHECK(opencl_error);
-    }
-  } else {
-    handle->contexts = (cl_context*) malloc(sizeof(cl_context));
-    if (handle->contexts == NULL) {
-      printf("Out of memory!\n");
-      return false;
-    }
-    handle->n_contexts = 1;
-    handle->contexts[0] = clCreateContext(NULL, handle->n_devices, handle->devices,
-                                                  NULL, NULL, &opencl_error);
+  handle->queues = (cl_command_queue*) malloc(n_devices * sizeof(cl_command_queue));
+  if (handle->queues == NULL) {
+    printf("Out of memory!\n");
+    return false;
+  }
+
+  for (uint_fast32_t dev_loop = 0; dev_loop < n_devices; dev_loop++) {
+    handle->queues[dev_loop] = clCreateCommandQueue(handle->context, handle->devices[dev_loop], 0, &opencl_error);
     OPENCL_CHECK(opencl_error);
   }
+  
   return true;
 }
 
@@ -94,12 +85,14 @@ bool opencl_setup(opencl_handle* handle, bool separate_contexts) {
 
 
 bool opencl_free(opencl_handle* handle) {
-  for (uint_fast32_t context_loop = 0; context_loop < handle->n_contexts; context_loop++) {
-    if (handle->contexts[context_loop] != NULL)
-      clReleaseContext(handle->contexts[context_loop]);
+  opencl_error = clReleaseContext(handle->context);
+  OPENCL_CHECK(opencl_error);
+  for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
+    opencl_error = clReleaseCommandQueue(handle->queues[dev_loop]);
+    OPENCL_CHECK(opencl_error);
   }
-  free(handle->contexts);
   
+  free(handle->queues);
   free(handle->devices);
   
   return true;

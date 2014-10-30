@@ -14,8 +14,7 @@ if (x != CL_SUCCESS) {\
 typedef struct {
   uint32_t      n_devices;
   cl_device_id* devices;
-  uint32_t      n_contexts;
-  cl_context*   contexts;
+  cl_context    context;
   cl_command_queue* queues;
 } opencl_handle;
 
@@ -29,15 +28,14 @@ typedef struct {
  */
 bool opencl_discover(opencl_handle* handle, cl_device_type type);
 
-
 /**
- * Setup OpenCL contexts and command queues for all devices listed in the handle.
- * @param handle Contains all platforms and devices, usually filled with opencl_discover().
- * @param separate_contexts If true, each device gets a separate OpenCL context.
- *                          If false, all devices are entered into the same context.
+ * Setup an OpenCL context and command queues for the first n_devices in the handle,
+ * provided by an earlier opencl_discover.
+ * @param handle OpenCL structure.
+ * @param n_devices Length of the device list.
  * @return True on success, false on failure.
  */
-bool opencl_setup(opencl_handle* handle, bool separate_contexts);
+bool opencl_setup(opencl_handle* handle, int n_devices);
 
 /**
  * Frees all memory and release all OpenCL structures allocated inside the given handle,
