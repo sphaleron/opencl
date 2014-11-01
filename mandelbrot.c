@@ -37,6 +37,7 @@ int main(int argc, char* argv[]) {
   parameters_init(&params);
   
 //  usage();
+  // read command line parameters
   
   printf("Naive Mandelbrot set generator\n\n");
 

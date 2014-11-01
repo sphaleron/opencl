@@ -31,6 +31,7 @@ bool opencl_discover(opencl_handle* handle, cl_device_type type);
 /**
  * Setup an OpenCL context and command queues for the first n_devices in the handle,
  * provided by an earlier opencl_discover.
+ * NOTE: redesign at some point, better idea would be to communicate via an OpenCL context.
  * @param handle OpenCL structure.
  * @param n_devices Length of the device list.
  * @return True on success, false on failure.
@@ -45,9 +46,19 @@ bool opencl_setup(opencl_handle* handle, int n_devices);
  */
 bool opencl_free(opencl_handle* handle);
 
+
+/**
+ * Load OpenCL kernel source from file, and create a program from it in the given context.
+ * @param filename File containing the source code.
+ * @param context OpenCL context in which the program will be executed.
+ * @param program Will be updated to contain the program.
+ */
+bool opencl_load_source_file(const char* filename, cl_context context, cl_program* program);
+
 /**
  * Internal use only, print an informative error message when an OpenCL API call
  * returns an error.
+ * TODO: make this really internal to the library, let the clients worry about errors themselves?
  * @param x error code
  */
 void _display_opencl_error(cl_uint x);

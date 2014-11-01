@@ -6,6 +6,7 @@
 
 #include "opencl_utils.h"
 
+// This is anything but thread-safe.
 static cl_int opencl_error;
 
 
@@ -85,11 +86,15 @@ bool opencl_setup(opencl_handle* handle, int n_devices) {
 
 
 bool opencl_free(opencl_handle* handle) {
-  opencl_error = clReleaseContext(handle->context);
-  OPENCL_CHECK(opencl_error);
-  for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
-    opencl_error = clReleaseCommandQueue(handle->queues[dev_loop]);
+  if (handle->context != NULL) {
+    opencl_error = clReleaseContext(handle->context);
     OPENCL_CHECK(opencl_error);
+  }
+  for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
+    if (handle->queues != NULL && handle->queues[dev_loop] != NULL) {
+      opencl_error = clReleaseCommandQueue(handle->queues[dev_loop]);
+      OPENCL_CHECK(opencl_error);
+    }
   }
   
   free(handle->queues);
@@ -98,6 +103,39 @@ bool opencl_free(opencl_handle* handle) {
   return true;
 }
 
+
+bool opencl_load_source_file(const char* filename, cl_context context, cl_program* program) {
+  FILE* source_fid;
+  char* source = NULL;
+  long source_length;
+
+  source_fid = fopen(filename, "r");
+  if (source_fid == NULL) {
+    printf("Opening kernel source file %s failed!\n", filename);
+    return false;
+  }
+  fseek(source_fid, 0, SEEK_END);
+  source_length = ftell(source_fid);
+  fseek(source_fid, 0, SEEK_SET);
+  
+  // Add a byte for null character:
+  source = (char*) malloc(source_length + 1);
+  if (source == NULL) {
+    printf("Out of memory!\n");
+    return false;
+  }
+  fread(source, source_length, 1, source_fid);
+  source[source_length] = '\0';
+  fclose(source_fid);
+  
+  // File reading is now done, let's create a program:
+  *program = clCreateProgramWithSource(context, 1, (const char**) &source, NULL, &opencl_error);
+  OPENCL_CHECK(opencl_error);
+  
+  free(source);
+  
+  return true;
+}
 
 // TODO display a more informative error message: file and line number + error code name
 void _display_opencl_error(cl_uint x)
