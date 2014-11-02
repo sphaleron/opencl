@@ -56,6 +56,17 @@ bool opencl_free(opencl_handle* handle);
 bool opencl_load_source_file(const char* filename, cl_context context, cl_program* program);
 
 /**
+ * Build the OpenCL program with given build options and create kernel objects
+ * for all kernels contained in the program.
+ * @param program OpenCL program containing the kernels.
+ * @param options Build options.
+ * @param verbose Print the number of kernels and build information.
+ * @param kernels A newly allocated array containing all kernels in the program. Otherwise NULL.
+ * @return The number of kernels, or -1 on failure.
+ */
+int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels);
+
+/**
  * Internal use only, print an informative error message when an OpenCL API call
  * returns an error.
  * TODO: make this really internal to the library, let the clients worry about errors themselves?
