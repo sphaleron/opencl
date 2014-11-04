@@ -71,16 +71,15 @@ int main(int argc, char* argv[]) {
    if (!opencl_load_source_file("mandelbrot.cl", opencl.context, &program))
          return EXIT_FAILURE;
 
-   // NOTE: commented out now, as pocl does not support the functionality required here.
-//    if (opencl_build_kernels(program, NULL, false, &kernels) < 0)
-//       return EXIT_FAILURE;
-//    mandelbrot_kernel = kernels[0];
+   if (opencl_build_kernels(program, NULL, false, &kernels) < 0)
+      return EXIT_FAILURE;
+   mandelbrot_kernel = kernels[0];
 
-   opencl_error = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-   OPENCL_CHECK(opencl_error);
-
-   mandelbrot_kernel = clCreateKernel(program, "mandelbrot", &opencl_error);
-   OPENCL_CHECK(opencl_error);
+//    opencl_error = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+//    OPENCL_CHECK(opencl_error);
+//
+//    mandelbrot_kernel = clCreateKernel(program, "mandelbrot", &opencl_error);
+//    OPENCL_CHECK(opencl_error);
 
    data_size = params.dim[0]*params.dim[1]*sizeof(uint32_t);
    image = (uint32_t*) calloc(1, data_size);
