@@ -46,6 +46,7 @@ int main(int argc, char* argv[]) {
    opencl_handle opencl;
    cl_program program;
    cl_kernel* kernels = NULL;
+   cl_int n_kernels;
    cl_kernel mandelbrot_kernel;
    cl_mem data_buffer;
    cl_int opencl_error;
@@ -71,15 +72,14 @@ int main(int argc, char* argv[]) {
    if (!opencl_load_source_file("mandelbrot.cl", opencl.context, &program))
          return EXIT_FAILURE;
 
-   if (opencl_build_kernels(program, NULL, false, &kernels) < 0)
+   n_kernels = opencl_build_kernels(program, NULL, false, &kernels);
+   if (n_kernels < 0)
       return EXIT_FAILURE;
-   mandelbrot_kernel = kernels[0];
 
-//    opencl_error = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-//    OPENCL_CHECK(opencl_error);
-//
-//    mandelbrot_kernel = clCreateKernel(program, "mandelbrot", &opencl_error);
-//    OPENCL_CHECK(opencl_error);
+   // This is getting silly, but I just want to test all features:
+   mandelbrot_kernel = opencl_get_named_kernel("mandelbrot", kernels, n_kernels);
+   if (mandelbrot_kernel == NULL)
+      return EXIT_FAILURE;
 
    data_size = params.dim[0]*params.dim[1]*sizeof(uint32_t);
    image = (uint32_t*) calloc(1, data_size);
