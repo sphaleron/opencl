@@ -1,12 +1,14 @@
+#include "opencl_utils.h"
+
+#include <CL/cl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <CL/cl.h>
-
-#include "opencl_utils.h"
+#include <string.h>
 
 #define MAX_BUILD_LOG_SIZE 2048
+#define MAX_KERNEL_NAME_SIZE 256
 
 // This is anything but thread-safe.
 static cl_int opencl_error;
@@ -140,8 +142,9 @@ bool opencl_load_source_file(const char* filename, cl_context context, cl_progra
 }
 
 
-int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels) {
+cl_int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels) {
    size_t n_kernels;
+   cl_uint n_created;
 
    opencl_error = clBuildProgram(program, 0, NULL, options, NULL, NULL);
    if (opencl_error != CL_SUCCESS) {
@@ -169,19 +172,37 @@ int opencl_build_kernels(cl_program program, const char* options, bool verbose, 
       printf("Failed to get the number of kernels! Error code %d.\n", opencl_error);
       return -1;
    }
+
    *kernels = (cl_kernel*) malloc(n_kernels*sizeof(cl_kernel));
    if (*kernels == NULL) {
       printf("Out of memory!\n");
       return -1;
    }
-   opencl_error = clCreateKernelsInProgram(program, n_kernels, *kernels, NULL);
+
+   opencl_error = clCreateKernelsInProgram(program, n_kernels, *kernels, &n_created);
    if (opencl_error != CL_SUCCESS) {
       printf("Failed to create kernel objects! Error code %d.\n", opencl_error);
       return -1;
    }
 
-   return n_kernels;
+   return n_created;
 }
+
+cl_kernel opencl_get_named_kernel(const char* kname, cl_kernel* kernels, cl_uint n_kernels) {
+   size_t name_length;
+   char name[MAX_KERNEL_NAME_SIZE];
+   for (uint_fast32_t kloop = 0; kloop < n_kernels; kloop++) {
+      opencl_error = clGetKernelInfo(kernels[kloop], CL_KERNEL_FUNCTION_NAME, MAX_KERNEL_NAME_SIZE, name, &name_length);
+      if (opencl_error != CL_SUCCESS) {
+         printf("Failed to get kernel name! Error code %d.\n", opencl_error);
+         return NULL;
+      }
+      if (!strcmp(kname, name))
+         return kernels[kloop];
+   }
+   return NULL;
+}
+
 
 
 // TODO display a more informative error message: file and line number + error code name

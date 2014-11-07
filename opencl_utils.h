@@ -64,7 +64,17 @@ bool opencl_load_source_file(const char* filename, cl_context context, cl_progra
  * @param kernels A newly allocated array containing all kernels in the program. Otherwise NULL.
  * @return The number of kernels, or -1 on failure.
  */
-int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels);
+cl_int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels);
+
+
+/**
+ * Find the kernel with the given name in the list of created kernels.
+ * @param kname The kernel name.
+ * @param kernels Array of kernels.
+ * @param n_kernels Length of the kernels array.
+ * @return Kernel object with the given name, or NULL in case of not found or errors.
+ */
+cl_kernel opencl_get_named_kernel(const char* kname, cl_kernel* kernels, cl_uint n_kernels);
 
 /**
  * Internal use only, print an informative error message when an OpenCL API call
