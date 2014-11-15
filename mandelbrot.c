@@ -1,3 +1,5 @@
+#define _GNU_SOURCE // for asprintf
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -5,10 +7,10 @@
 #include "opencl_utils.h"
 
 typedef struct {
-   float x[2];
-   float y[2];
-   uint32_t dim[2];
-   uint32_t max_iter;
+   cl_float x[2];
+   cl_float y[2];
+   size_t dim[2];
+   cl_uint max_iter;
 } parameters;
 
 static void usage() {
@@ -72,9 +74,13 @@ int main(int argc, char* argv[]) {
    if (!opencl_load_source_file("mandelbrot.cl", opencl.context, &program))
          return EXIT_FAILURE;
 
-   n_kernels = opencl_build_kernels(program, NULL, false, &kernels);
+   char* options = NULL;
+   if (asprintf(&options, "-DMAX_ITER=%d", params.max_iter) < 0)
+            return EXIT_FAILURE;
+   n_kernels = opencl_build_kernels(program, options, false, &kernels);
    if (n_kernels < 0)
       return EXIT_FAILURE;
+   free(options);
 
    // This is getting silly, but I just want to test all features:
    mandelbrot_kernel = opencl_get_named_kernel("mandelbrot", kernels, n_kernels);
@@ -94,10 +100,13 @@ int main(int argc, char* argv[]) {
 
    // Set kernel arguments
    clSetKernelArg(mandelbrot_kernel, 0, sizeof(cl_mem), (void *)&data_buffer);
+   clSetKernelArg(mandelbrot_kernel, 1, sizeof(cl_float), (void *)&params.x[0]);
+   clSetKernelArg(mandelbrot_kernel, 2, sizeof(cl_float), (void *)&params.x[1]);
+   clSetKernelArg(mandelbrot_kernel, 3, sizeof(cl_float), (void *)&params.y[0]);
+   clSetKernelArg(mandelbrot_kernel, 4, sizeof(cl_float), (void *)&params.y[1]);
 
-   const size_t global_size[] = {params.dim[0], params.dim[1]};
    opencl_error = clEnqueueNDRangeKernel(opencl.queues[0], mandelbrot_kernel, 2,
-                                          NULL, global_size, NULL, 0, NULL, NULL);
+                                          NULL, params.dim, NULL, 0, NULL, NULL);
 
    opencl_error = clEnqueueReadBuffer(opencl.queues[0], data_buffer, CL_TRUE, 0, data_size,
                                        (void*) image, 0, NULL, NULL);
