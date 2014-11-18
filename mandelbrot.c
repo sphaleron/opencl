@@ -56,11 +56,11 @@ int main(int argc, char* argv[]) {
    cl_kernel* kernels = NULL;
    cl_int n_kernels;
    cl_kernel mandelbrot_kernel;
-   cl_mem data_buffer;
+   cl_mem data_buffer, hist_buffer;
    cl_int opencl_error;
    parameters params;
-   uint32_t* image = NULL;
-   size_t data_size;
+   uint32_t *image = NULL, *histogram = NULL;
+   size_t data_size, hist_size;
 
    parameters_init(&params);
 
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
    }
    // debug_print_parameters(&params);
 
-   printf("Naive Mandelbrot set generator\n\n");
+   printf("Simple Mandelbrot set generator\n\n");
 
    if (!opencl_discover(&opencl, CL_DEVICE_TYPE_ALL))
       return EXIT_FAILURE;
@@ -125,9 +125,11 @@ int main(int argc, char* argv[]) {
    if (mandelbrot_kernel == NULL)
       return EXIT_FAILURE;
 
-   data_size = params.dim[0]*params.dim[1]*sizeof(uint32_t);
-   image = (uint32_t*) calloc(1, data_size);
-   if (image == NULL) {
+   data_size = params.dim[0]*params.dim[1]*sizeof(cl_uint);
+   hist_size = params.max_iter*sizeof(cl_uint);
+   image     = (uint32_t*) malloc(data_size);
+   histogram = (uint32_t*) calloc(1, hist_size);
+   if (image == NULL || histogram == NULL) {
       printf("Out of memory!\n");
       return EXIT_FAILURE;
    }
@@ -136,12 +138,17 @@ int main(int argc, char* argv[]) {
    data_buffer = clCreateBuffer(opencl.context, CL_MEM_WRITE_ONLY, data_size, NULL, &opencl_error);
    OPENCL_CHECK(opencl_error);
 
+   // Let's try something fancy for zeroing, although a kernel would do better job here.
+   hist_buffer = clCreateBuffer(opencl.context, CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR, hist_size, histogram, &opencl_error);
+   OPENCL_CHECK(opencl_error);
+
    // Set kernel arguments
    clSetKernelArg(mandelbrot_kernel, 0, sizeof(cl_mem), (void *)&data_buffer);
    clSetKernelArg(mandelbrot_kernel, 1, sizeof(cl_float), (void *)&params.x[0]);
    clSetKernelArg(mandelbrot_kernel, 2, sizeof(cl_float), (void *)&params.x[1]);
    clSetKernelArg(mandelbrot_kernel, 3, sizeof(cl_float), (void *)&params.y[0]);
    clSetKernelArg(mandelbrot_kernel, 4, sizeof(cl_float), (void *)&params.y[1]);
+   clSetKernelArg(mandelbrot_kernel, 5, sizeof(cl_mem), (void *)&hist_buffer);
 
    opencl_error = clEnqueueNDRangeKernel(opencl.queues[0], mandelbrot_kernel, 2,
                                           NULL, params.dim, NULL, 0, NULL, NULL);
@@ -150,14 +157,25 @@ int main(int argc, char* argv[]) {
                                        (void*) image, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
+   // TODO remove once the histogram is working.
+   opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
+                                       (void*) histogram, 0, NULL, NULL);
+   OPENCL_CHECK(opencl_error);
+   for (uint_fast32_t hloop = 0; hloop < params.max_iter; hloop++)
+      printf("%d ", histogram[hloop]);
+
+
    // Hard coded output file now, until we get to options.
    if (!write_image(&params, image))
       return EXIT_FAILURE;
 
    opencl_error = clReleaseMemObject(data_buffer);
    OPENCL_CHECK(opencl_error);
+   opencl_error = clReleaseMemObject(hist_buffer);
+   OPENCL_CHECK(opencl_error);
 
    free(image);
+   free(histogram);
 
    opencl_error = clReleaseKernel(mandelbrot_kernel);
    OPENCL_CHECK(opencl_error);
