@@ -90,17 +90,22 @@ bool opencl_setup(opencl_handle* handle, int n_devices) {
 
 
 bool opencl_free(opencl_handle* handle) {
-  if (handle->context != NULL) {
-    opencl_error = clReleaseContext(handle->context);
-    OPENCL_CHECK(opencl_error);
-  }
-  for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
-    if (handle->queues != NULL && handle->queues[dev_loop] != NULL) {
-      opencl_error = clReleaseCommandQueue(handle->queues[dev_loop]);
+   for (uint_fast32_t kloop = 0; kloop < handle->n_kernels; kloop++) {
+      opencl_error = clReleaseKernel(handle->kernels[kloop]);
       OPENCL_CHECK(opencl_error);
-    }
-  }
+   }
+   free(handle->kernels);
 
+   if (handle->context != NULL) {
+      opencl_error = clReleaseContext(handle->context);
+      OPENCL_CHECK(opencl_error);
+   }
+   for (uint_fast32_t dev_loop = 0; dev_loop < handle->n_devices; dev_loop++) {
+      if (handle->queues != NULL && handle->queues[dev_loop] != NULL) {
+         opencl_error = clReleaseCommandQueue(handle->queues[dev_loop]);
+         OPENCL_CHECK(opencl_error);
+      }
+   }
   free(handle->queues);
   free(handle->devices);
 
@@ -141,8 +146,7 @@ bool opencl_load_source_file(const char* filename, cl_context context, cl_progra
   return true;
 }
 
-
-cl_int opencl_build_kernels(cl_program program, const char* options, bool verbose, cl_kernel** kernels) {
+cl_int opencl_build_kernels(opencl_handle* handle, cl_program program, const char* options, bool verbose) {
    size_t n_kernels;
    cl_uint n_created;
 
@@ -173,32 +177,33 @@ cl_int opencl_build_kernels(cl_program program, const char* options, bool verbos
       return -1;
    }
 
-   *kernels = (cl_kernel*) malloc(n_kernels*sizeof(cl_kernel));
-   if (*kernels == NULL) {
+   handle->kernels = (cl_kernel*) malloc(n_kernels*sizeof(cl_kernel));
+   if (handle->kernels == NULL) {
       printf("Out of memory!\n");
       return -1;
    }
 
-   opencl_error = clCreateKernelsInProgram(program, n_kernels, *kernels, &n_created);
+   opencl_error = clCreateKernelsInProgram(program, n_kernels, handle->kernels, &n_created);
    if (opencl_error != CL_SUCCESS) {
       printf("Failed to create kernel objects! Error code %d.\n", opencl_error);
       return -1;
    }
+   handle->n_kernels = n_created;
 
    return n_created;
 }
 
-cl_kernel opencl_get_named_kernel(const char* kname, cl_kernel* kernels, cl_uint n_kernels) {
+cl_kernel opencl_get_named_kernel(opencl_handle* handle, const char* kname) {
    size_t name_length;
    char name[MAX_KERNEL_NAME_SIZE];
-   for (uint_fast32_t kloop = 0; kloop < n_kernels; kloop++) {
-      opencl_error = clGetKernelInfo(kernels[kloop], CL_KERNEL_FUNCTION_NAME, MAX_KERNEL_NAME_SIZE, name, &name_length);
+   for (uint_fast32_t kloop = 0; kloop < handle->n_kernels; kloop++) {
+      opencl_error = clGetKernelInfo(handle->kernels[kloop], CL_KERNEL_FUNCTION_NAME, MAX_KERNEL_NAME_SIZE, name, &name_length);
       if (opencl_error != CL_SUCCESS) {
          printf("Failed to get kernel name! Error code %d.\n", opencl_error);
          return NULL;
       }
       if (!strcmp(kname, name))
-         return kernels[kloop];
+         return handle->kernels[kloop];
    }
    return NULL;
 }
