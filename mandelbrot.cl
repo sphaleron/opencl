@@ -33,3 +33,22 @@ __kernel void mandelbrot(__global uint* image, float x0, float x1, float y0, flo
   if (counter > 0)
      atomic_inc(&histogram[counter - 1]);
 }
+
+
+// Parallel prefix sum (inclusive), somewhat following GPU gems
+__kernel void scan(__global uint* data, __global uint* sums, __local uint* workspace, uint data_size) {
+   uint thread_id = get_local_id(0);
+   uint scan_size = get_local_size(0);
+   uint offset = 2*scan_size*get_group_id(0);
+
+   data = data + offset;
+   data_size = data_size - offset;
+
+   // Fetch data to workspace
+   while (thread_id < data_size) {
+      workspace[thread_id] = data[thread_id];
+      thread_id += scan_size;
+   }
+   barrier(CLK_LOCAL_MEM_FENCE);
+
+}

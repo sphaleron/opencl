@@ -15,6 +15,7 @@ typedef struct {
    char* outfile;
 } parameters;
 
+static bool prefix_sum(opencl_handle* handle, cl_mem buffer, cl_uint buffer_size);
 static void debug_print_parameters(const parameters* param);
 
 
@@ -108,20 +109,20 @@ int main(int argc, char* argv[]) {
    if (!opencl_setup(&opencl, 1))
       return EXIT_FAILURE;
 
-   // Load the kernel from a source file
+   // Load kernels from a source file
    if (!opencl_load_source_file("mandelbrot.cl", opencl.context, &program))
          return EXIT_FAILURE;
 
    char* options = NULL;
    if (asprintf(&options, "-DMAX_ITER=%d", params.max_iter) < 0)
             return EXIT_FAILURE;
-   n_kernels = opencl_build_kernels(program, options, false, &kernels);
+   n_kernels = opencl_build_kernels(&opencl, program, options, false);
    if (n_kernels < 0)
       return EXIT_FAILURE;
    free(options);
 
    // This is getting silly, but I just want to test all features:
-   mandelbrot_kernel = opencl_get_named_kernel("mandelbrot", kernels, n_kernels);
+   mandelbrot_kernel = opencl_get_named_kernel(&opencl, "mandelbrot");
    if (mandelbrot_kernel == NULL)
       return EXIT_FAILURE;
 
@@ -157,15 +158,15 @@ int main(int argc, char* argv[]) {
                                        (void*) image, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
-   // TODO remove once the histogram is working.
+   if (!prefix_sum(&opencl, hist_buffer, params.max_iter))
+      return EXIT_FAILURE;
+
    opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
                                        (void*) histogram, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
    for (uint_fast32_t hloop = 0; hloop < params.max_iter; hloop++)
       printf("%d ", histogram[hloop]);
 
-
-   // Hard coded output file now, until we get to options.
    if (!write_image(&params, image))
       return EXIT_FAILURE;
 
@@ -177,10 +178,6 @@ int main(int argc, char* argv[]) {
    free(image);
    free(histogram);
 
-   opencl_error = clReleaseKernel(mandelbrot_kernel);
-   OPENCL_CHECK(opencl_error);
-   free(kernels);
-
    opencl_error = clReleaseProgram(program);
    OPENCL_CHECK(opencl_error);
 
@@ -188,6 +185,54 @@ int main(int argc, char* argv[]) {
       return EXIT_FAILURE;
 
    return EXIT_SUCCESS;
+}
+
+static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
+   // Inclusive prefix scan on the buffer (of uints)
+   size_t block_size, nblocks, global_size;
+   size_t wg_size = 1;
+   cl_int opencl_error;
+   cl_mem sums_buffer;
+   cl_kernel scan_kernel;
+   // 1. divide data into blocks of size <= 2*max_work_group_size
+   opencl_error = clGetDeviceInfo(opencl->devices[0], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &block_size, NULL);
+   OPENCL_CHECK(opencl_error);
+   // Max work group size is always a power of 2 in practice, but let's pretend we don't know that
+   // We need a power of 2 that is at most as large as max wg size
+   while (wg_size < block_size)
+      wg_size *= 2;
+   if (wg_size > block_size)
+      wg_size /= 2;
+   // Each thread can handle two elements on the first round
+   block_size = 2*wg_size;
+
+   nblocks = (buffer_n + block_size - 1) / block_size;
+   global_size = nblocks * wg_size;
+
+   if (nblocks > 1) {
+      sums_buffer = clCreateBuffer(opencl->context, CL_MEM_READ_WRITE, nblocks*sizeof(cl_uint), NULL, &opencl_error);
+      OPENCL_CHECK(opencl_error);
+   } else
+      sums_buffer = NULL;
+
+   scan_kernel = opencl_get_named_kernel(opencl, "scan");
+   if (scan_kernel == NULL)
+      return false;
+
+   clSetKernelArg(scan_kernel, 0, sizeof(cl_mem), (void *)&buffer);
+   clSetKernelArg(scan_kernel, 1, sizeof(cl_mem), (void *)&sums_buffer);
+   clSetKernelArg(scan_kernel, 2, block_size*sizeof(cl_uint), NULL);
+   clSetKernelArg(scan_kernel, 3, sizeof(cl_uint), (void*)&buffer_n);
+   
+   opencl_error = clEnqueueNDRangeKernel(opencl->queues[0], scan_kernel, 1, NULL, &global_size, &wg_size, 0, NULL, NULL);
+   OPENCL_CHECK(opencl_error);
+
+   if (sums_buffer != NULL) {
+      opencl_error = clReleaseMemObject(sums_buffer);
+      OPENCL_CHECK(opencl_error);
+   }
+
+   return true;
 }
 
 
