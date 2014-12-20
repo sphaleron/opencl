@@ -35,20 +35,58 @@ __kernel void mandelbrot(__global uint* image, float x0, float x1, float y0, flo
 }
 
 
-// Parallel prefix sum (inclusive), somewhat following GPU gems
+// Parallel (inclusive) prefix sum, following GPU gems & some lecture notes
 __kernel void scan(__global uint* data, __global uint* sums, __local uint* workspace, uint data_size) {
    uint thread_id = get_local_id(0);
    uint scan_size = get_local_size(0);
    uint offset = 2*scan_size*get_group_id(0);
 
    data = data + offset;
-   data_size = data_size - offset;
+   data_size = min(data_size - offset, 2*scan_size);
 
    // Fetch data to workspace
    while (thread_id < data_size) {
       workspace[thread_id] = data[thread_id];
       thread_id += scan_size;
    }
+   // In the last WG we may have some empty workspace:
+   while (thread_id < 2*scan_size) {
+      workspace[thread_id] = 0;
+      thread_id += scan_size;
+   }
+   thread_id = get_local_id(0);
+
+   // Reduction
+   offset = 1;
+   for (int d = scan_size; d > 0; d >>= 1) {
+      barrier(CLK_LOCAL_MEM_FENCE);
+      if (thread_id < d) {
+         int ai = offset*(2*thread_id + 1) - 1;
+         int bi = ai + offset;
+         workspace[bi] += workspace[ai];
+      }
+      offset <<= 1;
+   }
+
+   // Build the complete scan
+   offset = scan_size >> 1;
+   for (int d = 2; d <= scan_size; d <<= 1) {
+      barrier(CLK_LOCAL_MEM_FENCE);
+      if (thread_id + 1 < d ) {
+         int ai = offset*(2*thread_id + 2) - 1;
+         int bi = ai + offset;
+         workspace[bi] += workspace[ai];
+      }
+      offset >>= 1;
+   }
+
    barrier(CLK_LOCAL_MEM_FENCE);
 
+   if (sums && thread_id == 0)
+      sums[get_group_id(0)] = workspace[2*scan_size - 1];
+
+   while (thread_id < data_size) {
+      data[thread_id] = workspace[thread_id];
+      thread_id += scan_size;
+   }
 }

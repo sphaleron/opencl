@@ -158,14 +158,30 @@ int main(int argc, char* argv[]) {
                                        (void*) image, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
+   // TODO: remove
+   uint32_t* debug_histogram = (uint32_t*) calloc(1, hist_size);
+
+   // TODO: remove
+   opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
+                                       (void*) debug_histogram, 0, NULL, NULL);
+   // TODO: remove
+   uint32_t total = 0;
+   for (int i = 0; i < params.max_iter; i++) {
+      total += debug_histogram[i];
+      debug_histogram[i] = total;
+   }
+
    if (!prefix_sum(&opencl, hist_buffer, params.max_iter))
       return EXIT_FAILURE;
 
    opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
                                        (void*) histogram, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
+
+   // TODO: remove
    for (uint_fast32_t hloop = 0; hloop < params.max_iter; hloop++)
-      printf("%d ", histogram[hloop]);
+      if (debug_histogram[hloop] != histogram[hloop])
+         printf("Histogram error: %ld : %d vs. %d\n", hloop, debug_histogram[hloop], histogram[hloop]);
 
    if (!write_image(&params, image))
       return EXIT_FAILURE;
@@ -194,7 +210,8 @@ static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
    cl_int opencl_error;
    cl_mem sums_buffer;
    cl_kernel scan_kernel;
-   // 1. divide data into blocks of size <= 2*max_work_group_size
+
+   // divide data into blocks of size <= 2*max_work_group_size
    opencl_error = clGetDeviceInfo(opencl->devices[0], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &block_size, NULL);
    OPENCL_CHECK(opencl_error);
    // Max work group size is always a power of 2 in practice, but let's pretend we don't know that
@@ -206,6 +223,7 @@ static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
    // Each thread can handle two elements on the first round
    block_size = 2*wg_size;
 
+   // Round up to a multiple of block_size
    nblocks = (buffer_n + block_size - 1) / block_size;
    global_size = nblocks * wg_size;
 
@@ -223,7 +241,7 @@ static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
    clSetKernelArg(scan_kernel, 1, sizeof(cl_mem), (void *)&sums_buffer);
    clSetKernelArg(scan_kernel, 2, block_size*sizeof(cl_uint), NULL);
    clSetKernelArg(scan_kernel, 3, sizeof(cl_uint), (void*)&buffer_n);
-   
+
    opencl_error = clEnqueueNDRangeKernel(opencl->queues[0], scan_kernel, 1, NULL, &global_size, &wg_size, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
