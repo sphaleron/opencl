@@ -158,30 +158,12 @@ int main(int argc, char* argv[]) {
                                        (void*) image, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
-   // TODO: remove
-   uint32_t* debug_histogram = (uint32_t*) calloc(1, hist_size);
-
-   // TODO: remove
-   opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
-                                       (void*) debug_histogram, 0, NULL, NULL);
-   // TODO: remove
-   uint32_t total = 0;
-   for (int i = 0; i < params.max_iter; i++) {
-      total += debug_histogram[i];
-      debug_histogram[i] = total;
-   }
-
    if (!prefix_sum(&opencl, hist_buffer, params.max_iter))
       return EXIT_FAILURE;
 
    opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
                                        (void*) histogram, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
-
-   // TODO: remove
-   for (uint_fast32_t hloop = 0; hloop < params.max_iter; hloop++)
-      if (debug_histogram[hloop] != histogram[hloop])
-         printf("Histogram error: %ld : %d vs. %d\n", hloop, debug_histogram[hloop], histogram[hloop]);
 
    if (!write_image(&params, image))
       return EXIT_FAILURE;
@@ -245,7 +227,25 @@ static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
    opencl_error = clEnqueueNDRangeKernel(opencl->queues[0], scan_kernel, 1, NULL, &global_size, &wg_size, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
-   if (sums_buffer != NULL) {
+   if (nblocks > 1) {
+      clSetKernelArg(scan_kernel, 0, sizeof(cl_mem), (void *)&sums_buffer);
+      clSetKernelArg(scan_kernel, 1, sizeof(cl_mem), NULL);
+      clSetKernelArg(scan_kernel, 2, block_size*sizeof(cl_uint), NULL);
+      clSetKernelArg(scan_kernel, 3, sizeof(cl_uint), (void*)&nblocks);
+
+      // Single WG should be enough for this, unless we want to get overly fancy with recursive calls
+      opencl_error = clEnqueueNDRangeKernel(opencl->queues[0], scan_kernel, 1, NULL, &wg_size, &wg_size, 0, NULL, NULL);
+      OPENCL_CHECK(opencl_error);
+
+      cl_kernel add_kernel = opencl_get_named_kernel(opencl, "add_totals");
+      if (add_kernel == NULL)
+         return false;
+      clSetKernelArg(add_kernel, 0, sizeof(cl_mem), (void *)&buffer);
+      clSetKernelArg(add_kernel, 1, sizeof(cl_mem), (void *)&sums_buffer);
+      clSetKernelArg(add_kernel, 2, sizeof(cl_uint), (void*)&buffer_n);
+      opencl_error = clEnqueueNDRangeKernel(opencl->queues[0], add_kernel, 1, NULL, &global_size, &wg_size, 0, NULL, NULL);
+      OPENCL_CHECK(opencl_error);
+
       opencl_error = clReleaseMemObject(sums_buffer);
       OPENCL_CHECK(opencl_error);
    }

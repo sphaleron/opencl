@@ -90,3 +90,21 @@ __kernel void scan(__global uint* data, __global uint* sums, __local uint* works
       thread_id += scan_size;
    }
 }
+
+
+// Add the totals of each workgroup to data
+__kernel void add_totals(__global uint* data, __global const uint* sums, uint data_size) {
+   uint thread_id = get_local_id(0);
+   uint scan_size = get_local_size(0);
+   uint group     = get_group_id(0);
+
+   if (group > 0) {
+      uint to_add = sums[group];
+      uint offset = group*2*scan_size + thread_id;
+      if (offset < data_size)
+         data[offset] += to_add;
+      offset += scan_size;
+      if (offset < data_size)
+         data[offset] += to_add;
+   }
+}
