@@ -12,6 +12,7 @@ typedef struct {
    cl_float y[2];
    size_t dim[2];
    cl_uint max_iter;
+   cl_uint ncol;
    char* outfile;
 } parameters;
 
@@ -21,7 +22,7 @@ static void debug_print_parameters(const parameters* param);
 
 static void usage(FILE* stream) {
    fprintf(stream, "Usage: mandelbrot [-w width] [-h height] [-x lo:hi] [-y lo:hi] [-o outfile]\n");
-   fprintf(stream, "                  [-m max_iter] [-d]\n");
+   fprintf(stream, "                  [-m max_iter] [-c n_colors] [-d]\n");
    return;
 }
 
@@ -33,6 +34,7 @@ static void parameters_init(parameters* params) {
    params->dim[0] = 256;
    params->dim[1] = 256;
    params->max_iter = 1000;
+   params->ncol = 256;
    asprintf(&params->outfile, "mandelbrot.raw");
    return;
 }
@@ -56,7 +58,7 @@ int main(int argc, char* argv[]) {
    cl_program program;
    cl_kernel* kernels = NULL;
    cl_int n_kernels;
-   cl_kernel mandelbrot_kernel;
+   cl_kernel mandelbrot_kernel, recolor_kernel;
    cl_mem data_buffer, hist_buffer;
    cl_int opencl_error;
    parameters params;
@@ -67,7 +69,7 @@ int main(int argc, char* argv[]) {
 
    // read command line parameters
    char opt;
-   while ( (opt = getopt(argc, argv, "w:h:x:y:o:m:d")) != -1) {
+   while ( (opt = getopt(argc, argv, "w:h:x:y:o:m:c:d")) != -1) {
       switch(opt) {
          case 'w':
             params.dim[0] = atoi(optarg);
@@ -89,6 +91,9 @@ int main(int argc, char* argv[]) {
             break;
          case 'm':
             params.max_iter = atoi(optarg);
+            break;
+         case 'c':
+            params.ncol = atoi(optarg);
             break;
          case 'd':
             fprintf(stderr, "double precision not yet implemented\n");
@@ -152,17 +157,24 @@ int main(int argc, char* argv[]) {
    clSetKernelArg(mandelbrot_kernel, 5, sizeof(cl_mem), (void *)&hist_buffer);
 
    opencl_error = clEnqueueNDRangeKernel(opencl.queues[0], mandelbrot_kernel, 2,
-                                          NULL, params.dim, NULL, 0, NULL, NULL);
-
-   opencl_error = clEnqueueReadBuffer(opencl.queues[0], data_buffer, CL_TRUE, 0, data_size,
-                                       (void*) image, 0, NULL, NULL);
-   OPENCL_CHECK(opencl_error);
+                                         NULL, params.dim, NULL, 0, NULL, NULL);
 
    if (!prefix_sum(&opencl, hist_buffer, params.max_iter))
       return EXIT_FAILURE;
 
-   opencl_error = clEnqueueReadBuffer(opencl.queues[0], hist_buffer, CL_TRUE, 0, hist_size,
-                                       (void*) histogram, 0, NULL, NULL);
+   recolor_kernel = opencl_get_named_kernel(&opencl, "recolor");
+   if (recolor_kernel == NULL)
+      return EXIT_FAILURE;
+
+   clSetKernelArg(recolor_kernel, 0, sizeof(cl_mem), (void *)&data_buffer);
+   clSetKernelArg(recolor_kernel, 1, sizeof(cl_mem), (void *)&hist_buffer);
+   clSetKernelArg(recolor_kernel, 2, sizeof(cl_uint), (void *)&params.ncol);
+   opencl_error = clEnqueueNDRangeKernel(opencl.queues[0], recolor_kernel, 2,
+                                         NULL, params.dim, NULL, 0, NULL, NULL);
+   OPENCL_CHECK(opencl_error);
+
+   opencl_error = clEnqueueReadBuffer(opencl.queues[0], data_buffer, CL_TRUE, 0, data_size,
+                                      (void*) image, 0, NULL, NULL);
    OPENCL_CHECK(opencl_error);
 
    if (!write_image(&params, image))
@@ -175,6 +187,7 @@ int main(int argc, char* argv[]) {
 
    free(image);
    free(histogram);
+   free(params.outfile);
 
    opencl_error = clReleaseProgram(program);
    OPENCL_CHECK(opencl_error);
@@ -251,12 +264,4 @@ static bool prefix_sum(opencl_handle* opencl, cl_mem buffer, cl_uint buffer_n) {
    }
 
    return true;
-}
-
-
-static void debug_print_parameters(const parameters* param) {
-   printf("Current parameters:\n");
-   printf("x: %g %g,  y: %g %g,  nx: %ld, ny: %ld, max_iter: %d, outfile: %s\n",\
-   param->x[0], param->x[1], param->y[0], param->y[1], param->dim[0], param->dim[1], param->max_iter, param->outfile);
-   return;
 }

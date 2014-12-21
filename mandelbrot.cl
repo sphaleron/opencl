@@ -7,10 +7,9 @@ __kernel void mandelbrot(__global uint* image, float x0, float x1, float y0, flo
   complex z = (complex)(0.0f, 0.0f);
   float tmp; // for storing new z.x while still calculating z.y
 
-  // TODO change everything to vectors?
   uint px = get_global_id(0);
   uint py = get_global_id(1);
-  uint counter = MAX_ITER;
+  uint counter = 0;
 
   // Will no longer work if round the size up to a multiple of 32!
   uint nx = get_global_size(0);
@@ -19,19 +18,19 @@ __kernel void mandelbrot(__global uint* image, float x0, float x1, float y0, flo
   c.x = (x1*px + x0*(nx - 1 - px))/(nx - 1);
   c.y = (y1*py + y0*(ny - 1 - py))/(ny - 1);
 
-  while(z.x*z.x + z.y*z.y < 4 && counter > 0) {
+  while(z.x*z.x + z.y*z.y < 4 && counter < MAX_ITER) {
      tmp = z.x*z.x - z.y*z.y + c.x;
      z.y = 2.0f*z.x*z.y + c.y;
      z.x = tmp;
-     counter--;
+     counter++;
   }
 
   image[py*nx + px] = counter;
 
   // This is a terrible idea, most counts go to the first bins and we serialize the access
   // using atomic ops. But histograms are hard, I don't want to put too much effort there now.
-  if (counter > 0)
-     atomic_inc(&histogram[counter - 1]);
+  if (counter < MAX_ITER)
+     atomic_inc(&histogram[counter]);
 }
 
 
@@ -106,5 +105,25 @@ __kernel void add_totals(__global uint* data, __global const uint* sums, uint da
       offset += scan_size;
       if (offset < data_size)
          data[offset] += to_add;
+   }
+}
+
+
+// Recolor the image using the cumulative histogram. This just global memory read/write,
+// and would indeed be better left to host.
+__kernel void recolor(__global uint* image, __global const uint* histogram, uint ncol) {
+   uint px = get_global_id(0);
+   uint py = get_global_id(1);
+   uint nx = get_global_size(0);
+
+   uint total    = histogram[MAX_ITER - 1];
+   // Each thread does the same, expensive division, but we don't really care for now.
+   float scaling = ((float)ncol ) / total;
+
+   uint old_val = image[py*nx + px];
+   // In the set = 0, everything else will be recolored
+   if (old_val > 0) {
+      uint new_val = round(histogram[old_val - 1]*scaling);
+      image[py*nx + px] = new_val;
    }
 }
