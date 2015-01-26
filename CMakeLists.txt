@@ -1,9 +1,12 @@
 cmake_minimum_required (VERSION 2.8)
 project (OpenCL-query)
 
+add_subdirectory(owl)
+
 add_library(openclutils opencl_utils.c)
 add_executable(query query.c)
 add_executable(mandelbrot mandelbrot.c)
+add_executable(ocl opencl_fft_example.c)
 
 # Could try to check if we have the library, but for personal use this is fine.
 # Maybe do this once CMake distribution has FindOpenCL module.
@@ -11,6 +14,7 @@ add_executable(mandelbrot mandelbrot.c)
 target_link_libraries(openclutils OpenCL)
 target_link_libraries(query openclutils)
 target_link_libraries(mandelbrot openclutils)
+target_link_libraries(ocl owl openclutils)
 
 # Clang defaults to gnu11, do that with gcc as well
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
