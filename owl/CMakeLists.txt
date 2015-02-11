@@ -12,6 +12,6 @@ add_custom_command(
 )
 
 
-add_library(owl owl_fft.c ${CMAKE_CURRENT_BINARY_DIR}/owl_fft.cl.hex)
+add_library(owl owl_fft.c owl_opencl.c ${CMAKE_CURRENT_BINARY_DIR}/owl_fft.cl.hex)
 
 target_link_libraries(owl openclutils OpenCL)
