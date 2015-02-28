@@ -1,14 +1,5 @@
 /*
- * These functions implement part of the GNU Scientific Library
- * FFT functionality in OpenCL.
- *
- * The API is intentionally very similar to GSL. Additional init/free functions
- * for setting up the necessary OpenCL structures are provided.
- *
- * In the future I will split this so that there are separate functions for
- * up/download and transfer, and GSL-like functions only wrap those.
- * User should have access directly to the cl_mem objects containing
- * the data and transform for fiddling with them.
+ * Fast Fourier Transforms.
  */
 
 #ifndef OWL_FFT_H
